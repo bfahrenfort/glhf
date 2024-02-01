@@ -7,7 +7,7 @@ use crate::types::Doctype;
 #[command(propagate_version = true)]
 pub struct Cli {
     /// The name of the program for use with glhf
-    pub program: String,
+    pub program: Option<String>,
 
     /// Documentation type
     pub doctype: Option<Doctype>,
@@ -26,6 +26,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    #[clap(alias = "c")]
     Create(CreateArgs),
 }
 
