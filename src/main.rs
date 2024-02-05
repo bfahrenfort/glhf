@@ -2,10 +2,13 @@ mod args;
 mod invoke;
 mod types;
 
+use std::io::{self, Write};
+use std::process::{Command, Output};
+
 use args::{Cli, Commands};
 use invoke::{create, lookup};
-use tokio::main;
-use types::Doctype;
+use reqwest::StatusCode;
+use types::{Doctype, Program};
 
 #[tokio::main]
 async fn main() {
@@ -18,8 +21,10 @@ async fn main() {
         args.create
     );
 
-    // if let Ok(program) = match args.command {
-    let program = match args.command {
+    // TODO input validation
+
+    let name = args.program.clone().unwrap(); // Need an unmoved string for lower down
+    let fetched = match args.command {
         None => lookup(args).await,
         Some(Commands::Create(c)) => {
             let args = Cli {
@@ -33,16 +38,54 @@ async fn main() {
         }
     };
 
-    match program {
-        Ok(program) => {
-            // open docs
-            println!("result: {}", program);
-            ()
+    match fetched {
+        Ok(response) => {
+            // Open docs
+            //
+            // Only one Program
+            // For now, response: Program. TODO Vec<Program> in front and backend
+            println!(
+                "Found program {} with doctype {}",
+                response.program_name.clone(),
+                response.doctype
+            );
+            let process = open_docs(response, true);
+
+            // Multiple Programs (correspondingly multiple doctypes)
+            // TODO
         }
-        Err(program) => {
-            // Ask to create
-            println!("{}", program);
-            ()
+        Err(e) => {
+            println!("{}", e);
+
+            // If it wasn't in the db
+            if e.status() == Some(StatusCode::NOT_FOUND) {
+                println!("glhf: {} not found.", name);
+            }
         }
+    }
+}
+
+fn open_docs(program: Program, silent: bool) -> Result<(), std::io::Error> {
+    if program.doctype == Doctype::Man {
+        if !silent {
+            println!("man {}", program.program_name.clone());
+        }
+        Command::new("man")
+            .arg(program.program_name)
+            .spawn()
+            .expect("glhf: could not open manpage");
+        Ok(())
+    } else {
+        // It's a link-style docs
+        if !silent {
+            println!("xdg-open {}", program.url.clone().unwrap());
+        }
+        let process = Command::new("xdg-open")
+            .arg(program.url.unwrap())
+            .output()
+            .expect("glhf: could not open browser. is `xdg-open` installed?");
+        io::stdout().write_all(&process.stdout).unwrap();
+        io::stderr().write_all(&process.stdout).unwrap();
+        Ok(())
     }
 }
